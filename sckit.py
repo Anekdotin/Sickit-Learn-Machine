@@ -1,249 +1,159 @@
-import pandas as pd
-import os
-import time
-from datetime import datetime
-
-from time import mktime
-import matplotlib
+import numpy as np
 import matplotlib.pyplot as plt
-#from matplotlib import style
+from sklearn import svm, preprocessing
+import pandas as pd
+from matplotlib import style
+import statistics
 
-#style.use("dark_background")
+from collections import Counter
 
-import re
+style.use("ggplot")
 
-
-path = "X:/Backups/intraQuarter"
-
-
-def Key_Stats(gather=["Total Debt/Equity",
-                      'Trailing P/E',
-                      'Price/Sales',
-                      'Price/Book',
-                      'Profit Margin',
-                      'Operating Margin',
-                      'Return on Assets',
-                      'Return on Equity',
-                      'Revenue Per Share',
-                      'Market Cap',
-                      'Enterprise Value',
-                      'Forward P/E',
-                      'PEG Ratio',
-                      'Enterprise Value/Revenue',
-                      'Enterprise Value/EBITDA',
-                      'Revenue',
-                      'Gross Profit',
-                      'EBITDA',
-                      'Net Income Avl to Common ',
-                      'Diluted EPS',
-                      'Earnings Growth',
-                      'Revenue Growth',
-                      'Total Cash',
-                      'Total Cash Per Share',
-                      'Total Debt',
-                      'Current Ratio',
-                      'Book Value Per Share',
-                      'Cash Flow',
-                      'Beta',
-                      'Held by Insiders',
-                      'Held by Institutions',
-                      'Shares Short (as of',
-                      'Short Ratio',
-                      'Short % of Float',
-                      'Shares Short (prior ']):
-    statspath = path + '/_KeyStats'
-    stock_list = [x[0] for x in os.walk(statspath)]
-    df = pd.DataFrame(columns=['Date',
-                               'Unix',
-                               'Ticker',
-                               'Price',
-                               'stock_p_change',
-                               'SP500',
-                               'sp500_p_change',
-                               'Difference',
-                               ##############
-                               'DE Ratio',
-                               'Trailing P/E',
-                               'Price/Sales',
-                               'Price/Book',
-                               'Profit Margin',
-                               'Operating Margin',
-                               'Return on Assets',
-                               'Return on Equity',
-                               'Revenue Per Share',
-                               'Market Cap',
-                               'Enterprise Value',
-                               'Forward P/E',
-                               'PEG Ratio',
-                               'Enterprise Value/Revenue',
-                               'Enterprise Value/EBITDA',
-                               'Revenue',
-                               'Gross Profit',
-                               'EBITDA',
-                               'Net Income Avl to Common ',
-                               'Diluted EPS',
-                               'Earnings Growth',
-                               'Revenue Growth',
-                               'Total Cash',
-                               'Total Cash Per Share',
-                               'Total Debt',
-                               'Current Ratio',
-                               'Book Value Per Share',
-                               'Cash Flow',
-                               'Beta',
-                               'Held by Insiders',
-                               'Held by Institutions',
-                               'Shares Short (as of',
-                               'Short Ratio',
-                               'Short % of Float',
-                               'Shares Short (prior ',
-                               ##############
-                               'Status'])
-
-    sp500_df = pd.DataFrame.from_csv("YAHOO-INDEX_GSPC.csv")
-
-    ticker_list = []
-
-    for each_dir in stock_list[1:]:
-        each_file = os.listdir(each_dir)
-        ticker = each_dir.split("\\")[1]
-        ticker_list.append(ticker)
-
-        starting_stock_value = False
-        starting_sp500_value = False
-
-        if len(each_file) > 0:
-            for file in each_file:
-                date_stamp = datetime.strptime(file, '%Y%m%d%H%M%S.html')
-                unix_time = time.mktime(date_stamp.timetuple())
-                full_file_path = each_dir + '/' + file
-                source = open(full_file_path, 'r').read()
-                try:
-                    value_list = []
-
-                    for each_data in gather:
-                        try:
-                            regex = re.escape(each_data) + r'.*?(\d{1,8}\.\d{1,8}M?B?|N/A)%?</td>'
-                            value = re.search(regex, source)
-                            value = (value.group(1))
-
-                            if "B" in value:
-                                value = float(value.replace("B", '')) * 1000000000
-
-                            elif "M" in value:
-                                value = float(value.replace("M", '')) * 1000000
-
-                            value_list.append(value)
+how_much_better = 5
 
 
-                        except Exception as e:
-                            value = "N/A"
-                            value_list.append(value)
+FEATURES =  ['DE Ratio',
+             'Trailing P/E',
+             'Price/Sales',
+             'Price/Book',
+             'Profit Margin',
+             'Operating Margin',
+             'Return on Assets',
+             'Return on Equity',
+             'Revenue Per Share',
+             'Market Cap',
+             'Enterprise Value',
+             'Forward P/E',
+             'PEG Ratio',
+             'Enterprise Value/Revenue',
+             'Enterprise Value/EBITDA',
+             'Revenue',
+             'Gross Profit',
+             'EBITDA',
+             'Net Income Avl to Common ',
+             'Diluted EPS',
+             'Earnings Growth',
+             'Revenue Growth',
+             'Total Cash',
+             'Total Cash Per Share',
+             'Total Debt',
+             'Current Ratio',
+             'Book Value Per Share',
+             'Cash Flow',
+             'Beta',
+             'Held by Insiders',
+             'Held by Institutions',
+             'Shares Short (as of',
+             'Short Ratio',
+             'Short % of Float',
+             'Shares Short (prior ']
 
-                    try:
-                        sp500_date = datetime.fromtimestamp(unix_time).strftime('%Y-%m-%d')
-                        row = sp500_df[(sp500_df.index == sp500_date)]
-                        sp500_value = float(row["Adjusted Close"])
-                    except:
-                        sp500_date = datetime.fromtimestamp(unix_time - 259200).strftime('%Y-%m-%d')
-                        row = sp500_df[(sp500_df.index == sp500_date)]
-                        sp500_value = float(row["Adjusted Close"])
+def Status_Calc(stock, sp500):
+    difference = stock - sp500
 
-                    try:
-                        stock_price = float(source.split('</small><big><b>')[1].split('</b></big>')[0])
-                    except Exception as e:
-                        # <span id="yfs_l10_afl">43.27</span>
-                        try:
-                            stock_price = (source.split('</small><big><b>')[1].split('</b></big>')[0])
-                            stock_price = re.search(r'(\d{1,8}\.\d{1,8})', stock_price)
-                            stock_price = float(stock_price.group(1))
-
-                            #print(stock_price)
-                        except Exception as e:
-                            try:
-                                stock_price = (source.split('<span class="time_rtq_ticker">')[1].split('</span>')[0])
-                                stock_price = re.search(r'(\d{1,8}\.\d{1,8})', stock_price)
-                                stock_price = float(stock_price.group(1))
-                            except Exception as e:
-                                print(str(e), 'a;lsdkfh', file, ticker)
-
-                                #print('Latest:',stock_price)
-
-                                #print('stock price',str(e),ticker,file)
-                                #time.sleep(15)
-
-                    # print("stock_price:",stock_price,"ticker:", ticker)
-
-                    if not starting_stock_value:
-                        starting_stock_value = stock_price
-                    if not starting_sp500_value:
-                        starting_sp500_value = sp500_value
-
-                    stock_p_change = ((stock_price - starting_stock_value) / starting_stock_value) * 100
-                    sp500_p_change = ((sp500_value - starting_sp500_value) / starting_sp500_value) * 100
-
-                    difference = stock_p_change - sp500_p_change
-
-                    if difference > 0:
-                        status = "outperform"
-                    else:
-                        status = "underperform"
-
-                    if value_list.count("N/A") > 0:
-                        pass
-                    else:
+    if difference > how_much_better:
+        return 1
+    else:
+        return 0
 
 
-                        df = df.append({'Date': date_stamp,
-                                        'Unix': unix_time,
-                                        'Ticker': ticker,
+def Build_Data_Set():
+    data_df = pd.DataFrame.from_csv("key_stats_acc_perf_NO_NA_enhanced.csv")
 
-                                        'Price': stock_price,
-                                        'stock_p_change': stock_p_change,
-                                        'SP500': sp500_value,
-                                        'sp500_p_change': sp500_p_change,
-                                        'Difference': difference,
-                                        'DE Ratio': value_list[0],
-                                        #'Market Cap':value_list[1],
-                                        'Trailing P/E': value_list[1],
-                                        'Price/Sales': value_list[2],
-                                        'Price/Book': value_list[3],
-                                        'Profit Margin': value_list[4],
-                                        'Operating Margin': value_list[5],
-                                        'Return on Assets': value_list[6],
-                                        'Return on Equity': value_list[7],
-                                        'Revenue Per Share': value_list[8],
-                                        'Market Cap': value_list[9],
-                                        'Enterprise Value': value_list[10],
-                                        'Forward P/E': value_list[11],
-                                        'PEG Ratio': value_list[12],
-                                        'Enterprise Value/Revenue': value_list[13],
-                                        'Enterprise Value/EBITDA': value_list[14],
-                                        'Revenue': value_list[15],
-                                        'Gross Profit': value_list[16],
-                                        'EBITDA': value_list[17],
-                                        'Net Income Avl to Common ': value_list[18],
-                                        'Diluted EPS': value_list[19],
-                                        'Earnings Growth': value_list[20],
-                                        'Revenue Growth': value_list[21],
-                                        'Total Cash': value_list[22],
-                                        'Total Cash Per Share': value_list[23],
-                                        'Total Debt': value_list[24],
-                                        'Current Ratio': value_list[25],
-                                        'Book Value Per Share': value_list[26],
-                                        'Cash Flow': value_list[27],
-                                        'Beta': value_list[28],
-                                        'Held by Insiders': value_list[29],
-                                        'Held by Institutions': value_list[30],
-                                        'Shares Short (as of': value_list[31],
-                                        'Short Ratio': value_list[32],
-                                        'Short % of Float': value_list[33],
-                                        'Shares Short (prior ': value_list[34],
-                                        'Status': status},
-                                       ignore_index=True)
-                except Exception as e:
-                    pass
+    #data_df = data_df[:100]
+    data_df = data_df.reindex(np.random.permutation(data_df.index))
+    data_df = data_df.replace("NaN",0).replace("N/A",0)
 
-    df.to_csv("key_stats.csv")
+    data_df["Status2"] = list(map(Status_Calc, data_df["stock_p_change"], data_df["sp500_p_change"]))
     
- 
+
+    X = np.array(data_df[FEATURES].values)#.tolist())
+
+    y = (data_df["Status2"]
+         .replace("underperform",0)
+         .replace("outperform",1)
+         .values.tolist())
+
+    X = preprocessing.scale(X)
+
+    Z = np.array(data_df[["stock_p_change","sp500_p_change"]])
+
+
+    return X,y,Z
+
+
+def Analysis():
+
+    test_size = 1
+
+    invest_amount = 10000
+    
+    total_invests = 0
+
+    
+    if_market = 0
+    if_strat = 0
+
+
+
+    
+    X, y, Z = Build_Data_Set()
+    print(len(X))
+
+    
+    clf = svm.SVC(kernel="linear", C= 1.0)
+    clf.fit(X[:-test_size],y[:-test_size])
+
+    correct_count = 0
+
+    for x in range(1, test_size+1):
+        if clf.predict(X[-x])[0] == y[-x]:
+            correct_count += 1
+
+        if clf.predict(X[-x])[0] == 1:
+            invest_return = invest_amount + (invest_amount * (Z[-x][0]/100))
+            market_return = invest_amount + (invest_amount * (Z[-x][1]/100))
+            total_invests += 1
+            if_market += market_return
+            if_strat += invest_return
+            
+
+
+    data_df = pd.DataFrame.from_csv("forward_sample_NO_NA.csv")
+
+    data_df = data_df.replace("N/A",0).replace("NaN",0)
+
+    X = np.array(data_df[FEATURES].values)
+
+    X = preprocessing.scale(X)
+
+    Z = data_df["Ticker"].values.tolist()
+
+    invest_list = []
+
+    for i in range(len(X)):
+        p = clf.predict(X[i])[0]
+        if p == 1:
+            #print(Z[i])
+            invest_list.append(Z[i])
+
+    #print(len(invest_list))
+    #print(invest_list)
+    return invest_list
+
+
+final_list = []
+
+loops = 8
+
+for x in range(loops):
+    stock_list = Analysis()
+    for e in stock_list:
+        final_list.append(e)
+
+x = Counter(final_list)
+
+print(15*"_")
+for each in x:
+    if x[each] > loops - (loops/3):
+        print(each)
